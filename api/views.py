@@ -4,22 +4,25 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.views import APIView
 from django.db import transaction
-from .models import Section, SubSection, Product, Customer, Order, OrderItem, Coupon, Cart, CartItem,DeviceToken
-from .serializers import SectionSerializer, SubSectionSerializer, ProductSerializer, OrderSerializer, CartSerializer,DeviceTokenSerializer
+from .models import Section, SubSection, Product, Customer, Order, OrderItem, Coupon, Cart, CartItem,DeviceToken,brand
+from .serializers import SectionSerializer, SubSectionSerializer, ProductSerializer, OrderSerializer, CartSerializer,DeviceTokenSerializer,BrandSerializer
 from .utility import send_whatsapp_otp
 from django.core.exceptions import ValidationError
 from django.core.cache import cache
 from .telegram_utility import send_order_to_telegram
 
 
+class BrandViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = brand.objects.all()
+    serializer_class =BrandSerializer
 
 
 class ProductViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Product.objects.select_related('sub_section').all()
     serializer_class = ProductSerializer
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['title', 'price', 'sub_section']
-    search_fields = ['title', 'description']
+    filterset_fields = ['title', 'price', 'sub_section','brand']
+    search_fields = ['title', 'description','brand']
     ordering_fields = ['price', 'created_at']
 
 class SectionViewSet(viewsets.ReadOnlyModelViewSet):
@@ -35,6 +38,7 @@ class AddToCartView(APIView):
         product_id = request.data.get('product_id')
         quantity = request.data.get('quantity', 1)
         cart_id = request.data.get('cart_id', None)
+
 
         if not product_id:
             return Response({"خطأ ": "رقم المنتج مطلوب (ID)"}, status=status.HTTP_400_BAD_REQUEST)
@@ -79,26 +83,42 @@ class ViewCartView(APIView):
 class ApplyCouponView(APIView):
     def post(self, request):
         cart_id = request.data.get('cart_id')
-        code = request.data.get('coupon_code')
+        code = request.data['coupon_code']
+        
+        # Ensure cart_id and coupon_code are provided
         if not cart_id or not code:
             return Response({"خطأ": "cart_id و coupon_code مطلوبات"}, status=status.HTTP_400_BAD_REQUEST)
+        
         try:
+            # Fetch the cart object using cart_id
             cart = Cart.objects.get(cart_id=cart_id)
         except Cart.DoesNotExist:
             return Response({"خطأ": "السلة غير موجودة"}, status=status.HTTP_404_NOT_FOUND)
 
         try:
+            # Fetch the coupon using the code
             coupon = Coupon.objects.get(code=code)
         except Coupon.DoesNotExist:
             return Response({"خطأ": "رمز الكوبون خطأ او غير موجود"}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Ensure the coupon is valid
         if not coupon.is_valid():
             return Response({"خطأ": "انتهت صلاحية الكوبون"}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Apply the coupon to the cart
         cart.applied_coupon = coupon
         cart.save()
+
+        # Recalculate the total after applying the coupon
+        cart_total = cart.calculate_total()
+
+        # Return updated cart data
         serializer = CartSerializer(cart)
-        return Response(serializer.data)
+        return Response({
+            "cart": serializer.data,
+            "total": cart_total
+        })
+
 
 class CheckoutView(APIView):
     def post(self, request):
@@ -181,7 +201,7 @@ class VerifyOTPAndPurchaseView(APIView):
             for item in cart.items.all():
                 product = item.product
                 if product.quantity < item.quantity:
-                    raise ValidationError("لا توجد كمية كافية")
+                    return Response({"خطأ": "لا توجد كمية كافية في المخزن"}, status=status.HTTP_400_BAD_REQUEST)
                 product.update_stock(-item.quantity)
                 OrderItem.objects.create(
                     order=order,
@@ -194,7 +214,7 @@ class VerifyOTPAndPurchaseView(APIView):
             cart.items.all().delete()
             cart.delete()
 
-        # Remove OTP from cache after successful verification
+        
         cache.delete(f"otp:{phone_number}")
         send_order_to_telegram(customer, order)
 

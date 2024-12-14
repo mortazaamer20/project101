@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Section, SubSection, Product, ProductImage, Coupon, Customer, OrderItem, Order, Cart, CartItem,Banner,DeviceToken
+from .models import Section, SubSection, Product, ProductImage, Coupon, brand, OrderItem, Order, Cart, CartItem,Banner,DeviceToken
 
 class ProductImageSerializer(serializers.ModelSerializer):
     class Meta:
@@ -15,7 +15,7 @@ class ProductSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'title', 'price', 'quantity', 'description',
             'discount_type', 'discount_value', 'discounted_price',
-            'images', 'created_at'
+            'images', 'brand','created_at'
         ]
 
     def get_discounted_price(self, obj):
@@ -34,7 +34,7 @@ class CartSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Cart
-        fields = ['cart_id', 'items', 'total']
+        fields = ['cart_id', 'items', 'total','applied_coupon']
 
     def get_total(self, obj):
         return obj.calculate_total()
@@ -106,3 +106,8 @@ class DeviceTokenSerializer(serializers.ModelSerializer):
     class Meta:
         model = DeviceToken
         fields = ['token']
+
+class BrandSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = brand
+        fields = ['brand_name','brand_image']

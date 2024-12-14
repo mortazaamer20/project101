@@ -9,13 +9,15 @@ from .views import (
     ApplyCouponView,
     CheckoutView,
     VerifyOTPAndPurchaseView,
-    RegisterDeviceTokenView
+    RegisterDeviceTokenView,
+    BrandViewSet
 )
 
 router = DefaultRouter()
 router.register('sections', SectionViewSet, basename='section')
 router.register('subsections', SubSectionViewSet, basename='subsection')
 router.register('products', ProductViewSet, basename='product')
+router.register('brands', BrandViewSet, basename="brand")
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -27,4 +29,5 @@ urlpatterns = [
     path('cart/checkout/', CheckoutView.as_view(), name='cart-checkout'),
     path('cart/verify-otp/', VerifyOTPAndPurchaseView.as_view(), name='cart-verify-otp'),
     path('device-token/register/', RegisterDeviceTokenView.as_view(), name='device-token-register'),
+    
 ]

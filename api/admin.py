@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Product, ProductImage, Coupon, SubSection, Section, Customer, OrderItem, Order, Cart, CartItem,Banner,Alert,DeviceToken
+from .models import Product, ProductImage, Coupon, SubSection, Section, Customer, OrderItem, Order, Cart, CartItem,Banner,Alert,DeviceToken, brand
 from django.urls import path, reverse
 from django.shortcuts import get_object_or_404, redirect
 from django.contrib import messages
@@ -14,12 +14,15 @@ class ProductImageInline(admin.TabularInline):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ['title', 'price', 'quantity', 'created_at', 'is_low_stock_indicator']
+    list_display = ['title','price', 'calculate_discounted_price','discount_value', 'quantity', 'created_at', 'is_low_stock_indicator']
     inlines = [ProductImageInline]
-
+    @admin.display(description='هل المخزون المتبقي قليل (اقل من 5 )')
     def is_low_stock_indicator(self, obj):
         return obj.is_low_stock()
     is_low_stock_indicator.boolean = True
+    @admin.display(description='السعر بعد الخصم')
+    def calculate_discounted_price(self,obj):
+        return obj.calculate_discounted_price()
 
 @admin.register(Coupon)
 class CouponAdmin(admin.ModelAdmin):
@@ -45,9 +48,9 @@ class CustomerAdmin(admin.ModelAdmin):
 class OrderItemAdmin(admin.ModelAdmin):
     list_display = ['order', 'product', 'quantity', 'total_price']
 
-# @admin.register(Cart)
-# class CartAdmin(admin.ModelAdmin):
-#     list_display = ['cart_id', 'applied_coupon', 'created_at']
+@admin.register(brand)
+class brandAdmin(admin.ModelAdmin):
+    list_display = ['brand_name']
 
 @admin.register(CartItem)
 class CartItemAdmin(admin.ModelAdmin):

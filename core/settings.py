@@ -22,8 +22,8 @@ SECRET_KEY = env('SECRET_KEY')
 environ.Env.read_env(BASE_DIR / '.env')
 
 
-
-
+X_FRAME_OPTIONS = "SAMEORIGIN"
+SILENCED_SYSTEM_CHECKS = ["security.W019"]
 
 DEBUG = env('DEBUG')
 
@@ -143,7 +143,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'ar'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/baghdad'
 
 USE_I18N = True
 

@@ -29,6 +29,18 @@ class SubSection(models.Model):
         verbose_name = "الاقسام الفرعية للمنتج"
         verbose_name_plural = "الاقسام الفرعية للمنتج"
 
+class brand(models.Model):
+    brand_name = models.CharField(max_length=255 , verbose_name="اسم البراند",null=True, blank=True)
+    brand_image=models.ImageField(verbose_name="صورة البراند", null=True,blank=True)
+
+    def __str__(self):
+        return self.brand_name 
+
+    class Meta:
+        verbose_name = "البراند"
+        verbose_name_plural = "البراند"
+
+
 class Product(models.Model):
     FIXED = 'ثابت'
     PERCENTAGE = 'نسبة مئوية'
@@ -44,6 +56,7 @@ class Product(models.Model):
     description = models.TextField(blank=True, null=True, verbose_name="وصف المنتج")
     discount_type = models.CharField(max_length=20, choices=DISCOUNT_TYPES, blank=True, null=True, verbose_name="نوع الخصم ان وجد")
     discount_value = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name="قيمة الخصم")
+    brand= models.ForeignKey('brand',related_name="brand",on_delete=models.SET_NULL,verbose_name="الى اي براند ينمتي المنتج",null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="تاريخ الانشاء")
 
     class Meta:
@@ -177,21 +190,20 @@ class Cart(models.Model):
     applied_coupon = models.ForeignKey(Coupon, blank=True, null=True, on_delete=models.SET_NULL,verbose_name="الكوبون المطبق اذا كان هنالك")
 
     def calculate_total(self):
-        items_total = sum(i.get_total_price() for i in self.items.all())
+        items_total = sum(i.get_total_price() for i in self.items.all())  # Sum total price for all items
         if self.applied_coupon:
-            discount_amount = 0
+            total_discount = 0
+            # Apply the coupon discount to each item in the cart
             for item in self.items.all():
-                product_discount = self.applied_coupon.apply_coupon(item.product)
-                discount_amount += product_discount * item.quantity
-            final_total = items_total - discount_amount
-            return max(final_total, 0)
-        return items_total
+                product_discount = self.applied_coupon.apply_coupon(item.product)  # Get discount for the item
+                total_discount += product_discount * item.quantity  # Multiply by quantity to get total discount for the item
+
+            final_total = items_total - total_discount  # Subtract total discount from the items total
+            return max(final_total, 0)  # Ensure the final total is not less than 0
+        return items_total  # Return the items total if no coupon is applied
 
     def __str__(self):
         return f"السلة {self.cart_id}"
-    class Meta:
-        verbose_name = "السلة"
-        verbose_name_plural = "السلة"
 
 class CartItem(models.Model):
     cart = models.ForeignKey(Cart, related_name='items', on_delete=models.CASCADE)
