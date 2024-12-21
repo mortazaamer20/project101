@@ -19,7 +19,7 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class ProductViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Product.objects.prefetch_related('sub_section', 'brand', 'productimage_set').all()
+    queryset = Product.objects.prefetch_related('sub_section', 'brand').all()
     serializer_class = ProductSerializer
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['title', 'price', 'sub_section','brand']
@@ -92,23 +92,19 @@ class ApplyCouponView(APIView):
         cart_id = request.data.get('cart_id')
         code = request.data['coupon_code']
         
-        # Ensure cart_id and coupon_code are provided
         if not cart_id or not code:
             return Response({"خطأ": "cart_id و coupon_code مطلوبات"}, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            # Fetch the cart object using cart_id
             cart = Cart.objects.get(cart_id=cart_id)
         except Cart.DoesNotExist:
             return Response({"خطأ": "السلة غير موجودة"}, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            # Fetch the coupon using the code
             coupon = Coupon.objects.get(code=code)
         except Coupon.DoesNotExist:
             return Response({"خطأ": "رمز الكوبون خطأ او غير موجود"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Ensure the coupon is valid
         if not coupon.is_valid():
             return Response({"خطأ": "انتهت صلاحية الكوبون"}, status=status.HTTP_400_BAD_REQUEST)
 
