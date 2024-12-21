@@ -7,9 +7,10 @@ from django.db import transaction
 from .models import Section, SubSection, Product, Customer, Order, OrderItem, Coupon, Cart, CartItem,DeviceToken,brand
 from .serializers import SectionSerializer, SubSectionSerializer, ProductSerializer, OrderSerializer, CartSerializer,DeviceTokenSerializer,BrandSerializer
 from .utility import send_whatsapp_otp
-from django.core.exceptions import ValidationError
 from django.core.cache import cache
 from .telegram_utility import send_order_to_telegram
+from rest_framework.decorators import api_view
+from .apns import send_ios_push_notification, send_android_push_notification
 
 
 class BrandViewSet(viewsets.ReadOnlyModelViewSet):
@@ -18,7 +19,7 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class ProductViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Product.objects.select_related('sub_section').all()
+    queryset = Product.objects.prefetch_related('sub_section', 'brand', 'productimage_set').all()
     serializer_class = ProductSerializer
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['title', 'price', 'sub_section','brand']
@@ -39,6 +40,12 @@ class AddToCartView(APIView):
         quantity = request.data.get('quantity', 1)
         cart_id = request.data.get('cart_id', None)
 
+        try:
+            product = Product.objects.get(id=product_id)
+            if product.quantity < quantity:
+                return Response({"خطأ": "الكمية المطلوبة غير متوفرة في المخزون"}, status=status.HTTP_400_BAD_REQUEST)
+        except Product.DoesNotExist:
+            return Response({"خطأ": "المنتج غير موجود"}, status=status.HTTP_404_NOT_FOUND)
 
         if not product_id:
             return Response({"خطأ ": "رقم المنتج مطلوب (ID)"}, status=status.HTTP_400_BAD_REQUEST)
@@ -223,11 +230,61 @@ class VerifyOTPAndPurchaseView(APIView):
     
 
 
-class RegisterDeviceTokenView(APIView):
-    def post(self, request):
-        serializer = DeviceTokenSerializer(data=request.data)
-        if serializer.is_valid():
-            token = serializer.validated_data['token']
-            DeviceToken.objects.update_or_create(token=token)
-            return Response({"message": "Device token registered successfully"}, status=status.HTTP_200_OK)
+@api_view(['POST'])
+def save_device_token(request):
+    """
+    Endpoint to save the device token and platform.
+    """
+    # Create an instance of the serializer with the incoming data
+    serializer = DeviceTokenSerializer(data=request.data)
+
+    # Validate the data using the serializer
+    if serializer.is_valid():
+        # If valid, save the device token or update existing token
+        token = serializer.validated_data['token']
+        platform = serializer.validated_data['platform']
+
+        # Update or create the device token in the database
+        device_token, created = DeviceToken.objects.update_or_create(
+            token=token,
+            defaults={'platform': platform}
+        )
+        
+        # Return success response
+        return Response({"message": "Device token saved successfully."}, status=status.HTTP_201_CREATED)
+    else:
+        # If validation fails, return an error response
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+@api_view(['POST'])
+def send_notification(request):
+    """
+    Endpoint to send a notification to a device (iOS or Android).
+    """
+    # Extract data from the request
+    token = request.data.get('token')
+    platform = request.data.get('platform')
+    title = request.data.get('title')
+    message = request.data.get('message')
+
+    if not all([token, platform, title, message]):
+        return Response({"error": "Missing required fields (token, platform, title, message)"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate platform
+    if platform not in ['ios', 'android']:
+        return Response({"error": "Invalid platform. Must be 'ios' or 'android'."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        # Send the notification based on the platform
+        if platform == 'ios':
+            success = send_ios_push_notification(token, title, message)
+        elif platform == 'android':
+            success = send_android_push_notification(token, title, message)
+
+        if success:
+            return Response({"message": "Notification sent successfully"}, status=status.HTTP_200_OK)
+        else:
+            return Response({"error": "Failed to send notification"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -9,8 +9,9 @@ from .views import (
     ApplyCouponView,
     CheckoutView,
     VerifyOTPAndPurchaseView,
-    RegisterDeviceTokenView,
-    BrandViewSet
+    save_device_token,
+    BrandViewSet,
+    send_notification
 )
 
 router = DefaultRouter()
@@ -28,6 +29,7 @@ urlpatterns = [
     path('cart/apply-coupon/', ApplyCouponView.as_view(), name='cart-apply-coupon'),
     path('cart/checkout/', CheckoutView.as_view(), name='cart-checkout'),
     path('cart/verify-otp/', VerifyOTPAndPurchaseView.as_view(), name='cart-verify-otp'),
-    path('device-token/register/', RegisterDeviceTokenView.as_view(), name='device-token-register'),
+    path('cart/save-device-token/', save_device_token, name='save_device_token'),
+    path('cart/send-notification/', send_notification, name='send_notification'),
     
 ]

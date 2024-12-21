@@ -10,6 +10,13 @@ env = environ.Env(
 )
 
 
+CELERY_BROKER_URL = 'redis://localhost:6379/0'  # Redis as the broker
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+
+
+FCM_CREDENTIALS_PATH = '/path/to/your/firebase/credentials.json'
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -41,7 +48,7 @@ APNS_AUTH_KEY_ID = os.getenv('APNS_KEY_ID', 'YOUR_KEY_ID')
 APNS_AUTH_KEY_PATH = os.getenv('APNS_BUNDLE_ID', 'com.example.yourapp')
 APNS_BUNDLE_ID = os.getenv('APNS_AUTH_KEY', '/path/to/AuthKey_XXXXXXXXXX.p8')
 APNS_USE_SANDBOX = os.getenv('APNS_USE_SANDBOX', 'True') == 'True'  # True for sandbox, False for production
-
+APNS_AUTH_KEY_FILEPATH =  '/path/to/AuthKey_AUTH_KEY_ID.p8'
 
 
 TELEGRAM_CHAT_ID = env('TELEGRAM_CHAT_ID')
@@ -78,6 +85,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_filters',
     'drf_yasg',
+    "debug_toolbar",
 ]
 
 MIDDLEWARE = [
@@ -89,6 +97,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+     "debug_toolbar.middleware.DebugToolbarMiddleware",
 ]
 
 SITE_ID = 1
@@ -117,6 +126,10 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/3.2/ref/settings/#databases
 
+
+INTERNAL_IPS = [
+    '127.0.0.1',  # Localhost
+]
 
 
 # Password validation
@@ -162,7 +175,27 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 REST_FRAMEWORK = {
-    'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend'],
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 10,
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.SearchFilter',
+        'rest_framework.filters.OrderingFilter',
+    ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',  # Default pagination class
+    'PAGE_SIZE': 10,  # Default page size (adjust as needed)
+}
+
+
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
 }

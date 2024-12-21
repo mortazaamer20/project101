@@ -1,19 +1,22 @@
-# apns_helper.py
-
 import asyncio
-from kalyke import ApnsClient, Payload, PayloadAlert
-from django.conf import settings
-from .models import DeviceToken
 import logging
+from django.conf import settings
+from kalyke import ApnsClient, Payload, PayloadAlert
+from django.apps import apps
+from django.core.exceptions import ObjectDoesNotExist
+from firebase_admin import messaging
+from celery import shared_task
+
+
 
 logger = logging.getLogger(__name__)
 
 # Initialize APNs Client with required configurations
-apns_client  = ApnsClient(
-    use_sandbox=True,
-    team_id="YOUR_TEAM_ID",
-    auth_key_id="AUTH_KEY_ID",
-    auth_key_filepath="/path/to/AuthKey_AUTH_KEY_ID.p8",
+apns_client = ApnsClient(
+    use_sandbox=settings.APNS_USE_SANDBOX,
+    team_id=settings.APNS_TEAM_ID,
+    auth_key_id=settings.APNS_AUTH_KEY_ID,
+    auth_key_filepath=settings.APNS_AUTH_KEY_FILEPATH,
 )
 
 def create_payload(title, message):
@@ -24,34 +27,45 @@ def create_payload(title, message):
     payload = Payload(alert=alert, sound="default", badge=1)
     return payload
 
-async def send_ios_push_notification(token, title, message):
-    """
-    Sends a single push notification to a specified device token.
-    """
+@shared_task
+def send_ios_push_notification(token, title, message):
     payload = create_payload(title, message)
     try:
-        response = await apns_client.send_push(token=token, payload=payload)
+        response = apns_client.send_push(token=token, payload=payload)
         if response.status_code == 200:
-            logger.info(f"Notification sent to {token}: {title} - {message}")
             return True
-        else:
-            logger.error(f"Failed to send notification to {token}: {response.status_code} - {response.reason}")
-            return False
+        return False
     except Exception as e:
-        logger.error(f"Exception sending notification to {token}: {e}")
         return False
 
-def send_notification_to_all_devices(title, message):
-    """
-    Sends a push notification to all registered device tokens.
-    Manages the event loop to avoid RuntimeError.
-    """
-    tokens = DeviceToken.objects.values_list('token', flat=True)
+@shared_task
+def send_android_push_notification(token, title, message):
     try:
-        asyncio.run(asyncio.gather(
-            *[send_ios_push_notification(token, title, message) for token in tokens]
-        ))
-    except RuntimeError as e:
-        logger.error(f"RuntimeError while sending notifications: {e}")
-    except Exception as e:
-        logger.error(f"Unexpected error while sending notifications: {e}")
+        message = messaging.Message(
+            notification=messaging.Notification(title=title, body=message),
+            token=token,
+        )
+        messaging.send(message)
+        return True
+    except Exception:
+        return False
+    
+
+async def send_notifications_to_tokens(tokens, title, message):
+    """
+    Sends push notifications to a list of device tokens.
+    """
+    tasks = [send_ios_push_notification(token, title, message) for token in tokens]
+    return await asyncio.gather(*tasks)
+
+def send_notification_to_all_devices(title, message):
+    DeviceToken = apps.get_model('api.DeviceToken')
+    tokens = DeviceToken.objects.values_list('token', 'platform')
+
+    for token, platform in tokens:
+        if platform == 'ios':
+            send_ios_push_notification.delay(token, title, message)
+        elif platform == 'android':
+            send_android_push_notification.delay(token, title, message)
+
+

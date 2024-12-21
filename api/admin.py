@@ -127,5 +127,5 @@ class AlertAdmin(admin.ModelAdmin):
 
 @admin.register(DeviceToken)
 class DeviceTokenAdmin(admin.ModelAdmin):
-    list_display = ['token', 'created_at']
+    list_display = ['token', 'platform']
     search_fields = ['token']

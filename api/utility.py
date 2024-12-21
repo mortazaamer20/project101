@@ -8,7 +8,7 @@ def send_whatsapp_otp(phone_number):
     otp = random.randint(100000, 999999)
     
     # Store the OTP in cache for 5 minutes (300 seconds)
-    cache.set(f"otp:{phone_number}", otp, timeout=300)
+    cache.set(f"otp:{phone_number}", otp, timeout=600)
     
     account_sid = settings.TWILIO_ACCOUNT_SID
     auth_token = settings.TWILIO_AUTH_TOKEN

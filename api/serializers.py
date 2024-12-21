@@ -28,6 +28,14 @@ class CartItemSerializer(serializers.ModelSerializer):
         model = CartItem
         fields = ['product', 'quantity']
 
+    def validate(self, data):
+        product = data.get('product')
+        quantity = data.get('quantity')
+
+        if product.quantity < quantity:
+            raise serializers.ValidationError(f"لا توجد كمية كافية من {product.title}. هنالك {product.quantity} فقط متوفرة.")
+        return data
+
 class CartSerializer(serializers.ModelSerializer):
     items = CartItemSerializer(many=True, read_only=True)
     total = serializers.SerializerMethodField()
@@ -105,7 +113,7 @@ class BannerSerializer(serializers.ModelSerializer):
 class DeviceTokenSerializer(serializers.ModelSerializer):
     class Meta:
         model = DeviceToken
-        fields = ['token']
+        fields = ['token', 'platform']
 
 class BrandSerializer(serializers.ModelSerializer):
     class Meta:

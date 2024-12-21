@@ -3,6 +3,9 @@ from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db.models import F
 import uuid
+from .apns import send_ios_push_notification, send_android_push_notification
+import asyncio
+
 
 class Section(models.Model):
     name = models.CharField(max_length=255, verbose_name="اسم القسم")
@@ -28,6 +31,9 @@ class SubSection(models.Model):
     class Meta:
         verbose_name = "الاقسام الفرعية للمنتج"
         verbose_name_plural = "الاقسام الفرعية للمنتج"
+        indexes = [
+            models.Index(fields=['section']),
+        ]
 
 class brand(models.Model):
     brand_name = models.CharField(max_length=255 , verbose_name="اسم البراند",null=True, blank=True)
@@ -39,6 +45,9 @@ class brand(models.Model):
     class Meta:
         verbose_name = "البراند"
         verbose_name_plural = "البراند"
+        indexes = [
+            models.Index(fields=['brand_name']),
+        ]
 
 
 class Product(models.Model):
@@ -63,6 +72,12 @@ class Product(models.Model):
         verbose_name = "المنتجات"
         verbose_name_plural = "المنتجات"
         ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['title', 'description']),
+            models.Index(fields=['sub_section']),
+            models.Index(fields=['price']),
+        ]
+
 
     def __str__(self):
         return self.title
@@ -140,6 +155,12 @@ class Coupon(models.Model):
     class Meta:
         verbose_name = "كوبونات الخصم"
         verbose_name_plural = "كوبونات الخصم"
+        indexes = [
+            models.Index(fields=['code']),  # Index on code for fast lookup
+            models.Index(fields=['subsection']),  # Index on foreign key to SubSection
+            models.Index(fields=['start_date']),  # Index for filtering by date
+            models.Index(fields=['end_date']),  # Index for filtering by date
+        ]
 
 class Customer(models.Model):
     phone_number = models.CharField(max_length=15, unique=True, verbose_name="رقم الهاتف")
@@ -152,7 +173,10 @@ class Customer(models.Model):
         return f"{self.username or 'مستخدم عادي'} - {self.phone_number}"
     class Meta:
         verbose_name = "الزبائن"
-        verbose_name_plural = "الزبائن"   
+        verbose_name_plural = "الزبائن" 
+        indexes = [
+            models.Index(fields=['phone_number']),  # Index on phone_number
+        ]  
 
 class Order(models.Model):
     customer = models.ForeignKey(Customer, related_name="orders", on_delete=models.CASCADE,verbose_name="الطلبات")
@@ -166,6 +190,7 @@ class Order(models.Model):
     class Meta:
         verbose_name = "الطلبات "
         verbose_name_plural = "الطلبات" 
+        
 
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, related_name="items", on_delete=models.CASCADE, verbose_name="الطلب")
@@ -182,6 +207,10 @@ class OrderItem(models.Model):
     class Meta:
         verbose_name = "المنتجات المطلوبة"
         verbose_name_plural = "المنتجات المطلوبة" 
+        indexes = [
+            models.Index(fields=['order']),  # Index on order for fast item retrieval
+            models.Index(fields=['product']),  # Index on product for fast item retrieval
+        ]
 
 # Cart Models
 class Cart(models.Model):
@@ -248,11 +277,15 @@ class Banner(models.Model):
 
 
 class DeviceToken(models.Model):
-    token = models.CharField(max_length=200, unique=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    token = models.CharField(max_length=255)
+    platform = models.CharField(
+        max_length=10, 
+        choices=[('ios', 'iOS'), ('android', 'Android')],
+        help_text="Platform of the device (iOS or Android)"
+    )
 
     def __str__(self):
-        return self.token
+        return f"Token: {self.token}, Platform: {self.platform}"
     
 class Alert(models.Model):
     title = models.CharField(max_length=255)
@@ -262,3 +295,33 @@ class Alert(models.Model):
 
     def __str__(self):
         return self.title
+
+    async def send_notification(self):
+        """
+        Sends a notification to all devices registered for this alert.
+        Marks the alert as 'sent' after notification is sent.
+        """
+        # Get all device tokens
+        tokens = DeviceToken.objects.values_list('token', flat=True)
+
+        # Loop through each device token and send the notification
+        for token in tokens:
+            platform = DeviceToken.objects.get(token=token).platform  # Assuming platform is stored in DeviceToken model
+
+            if platform == 'ios':
+                await send_ios_push_notification(token, self.title, self.message)  # Await the async call
+            elif platform == 'android':
+                await send_android_push_notification(token, self.title, self.message)
+
+        # After sending the notification, mark the alert as sent
+        self.is_sent = True
+        self.save()
+
+    def save(self, *args, **kwargs):
+        """
+        Overriding the save method to send notifications when a new alert is created.
+        """
+        super().save(*args, **kwargs)
+        if not self.is_sent:  # Only send if it's not already marked as sent
+            # Run the asynchronous method within the event loop
+            asyncio.run(self.send_notification())  # Use asyncio to run the async method
