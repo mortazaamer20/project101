@@ -19,7 +19,7 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class ProductViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Product.objects.prefetch_related('sub_section', 'brand', 'productimage_set').all()
+    queryset = Product.objects.prefetch_related('sub_section', 'brand').all()
     serializer_class = ProductSerializer
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['title', 'price', 'sub_section','brand']
