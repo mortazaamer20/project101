@@ -57,6 +57,9 @@ class Product(models.Model):
         (FIXED, 'ثابت'),
         (PERCENTAGE, 'نسبة مئوية'),
     ]
+    class IsFavoured(models.TextChoices):
+        YES = "نعم", "نعم"
+        NO = "لا", "لا"
 
     sub_section = models.ForeignKey('SubSection', related_name="products", on_delete=models.CASCADE, verbose_name="اسم اقسم الفرعي")
     title = models.CharField(max_length=255, verbose_name="اسم المنتج")
@@ -67,6 +70,12 @@ class Product(models.Model):
     discount_value = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name="قيمة الخصم")
     brand= models.ForeignKey('brand',related_name="brand",on_delete=models.SET_NULL,verbose_name="الى اي براند ينمتي المنتج",null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="تاريخ الانشاء")
+    is_favoured = models.CharField(
+        max_length=3,
+        choices=IsFavoured.choices,
+        default=IsFavoured.NO,
+        verbose_name="هل تريد اظهار المنتج على الصفحة الرئيسية ؟"
+    )
 
     class Meta:
         verbose_name = "المنتجات"

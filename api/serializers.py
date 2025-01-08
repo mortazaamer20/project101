@@ -48,18 +48,18 @@ class CartSerializer(serializers.ModelSerializer):
         return obj.calculate_total()
 
 class SectionSerializer(serializers.ModelSerializer):
-    sub_sections = serializers.SerializerMethodField()
+    # sub_sections = serializers.SerializerMethodField()
 
     class Meta:
         model = Section
-        fields = ['id', 'name', 'description', 'created_at', 'sub_sections']
+        fields = ['id', 'name', 'description', 'created_at']
 
-    def get_sub_sections(self, obj):
-        subsections = obj.sub_sections.all()
-        return SubSectionSerializer(subsections, many=True).data
+    # def get_sub_sections(self, obj):
+    #     subsections = obj.sub_sections.all()
+    #     return SubSectionSerializer(subsections, many=True).data
 
 class SubSectionSerializer(serializers.ModelSerializer):
-    products = ProductSerializer(many=True, read_only=True)
+    # products = ProductSerializer(many=True, read_only=True)
 
     class Meta:
         model = SubSection

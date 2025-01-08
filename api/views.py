@@ -22,7 +22,7 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Product.objects.prefetch_related('sub_section', 'brand').all()
     serializer_class = ProductSerializer
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['title', 'price', 'sub_section','brand']
+    filterset_fields = ['title', 'price', 'sub_section','brand',"section","is_favoured"]
     search_fields = ['title', 'description','brand']
     ordering_fields = ['price', 'created_at']
 
@@ -31,8 +31,10 @@ class SectionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = SectionSerializer
 
 class SubSectionViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = SubSection.objects.prefetch_related('products').all()
+    queryset = SubSection.objects.prefetch_related('section').all()
     serializer_class = SubSectionSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['name']
 
 class AddToCartView(APIView):
     def post(self, request):
