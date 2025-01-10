@@ -24,6 +24,7 @@ class SubSection(models.Model):
     name = models.CharField(max_length=255, verbose_name="اسم القسم الفرعي")
     description = models.TextField(blank=True, null=True, verbose_name="وصف القسم الفرعي")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="تاريخ الانشاء")
+    image = models.ImageField(upload_to='subsection_images/', verbose_name="صورة القسم الفرعي",null= True , blank= True)
 
     def __str__(self):
         return self.name
@@ -37,7 +38,7 @@ class SubSection(models.Model):
 
 class brand(models.Model):
     brand_name = models.CharField(max_length=255 , verbose_name="اسم البراند",null=True, blank=True)
-    brand_image=models.ImageField(verbose_name="صورة البراند", null=True,blank=True)
+    brand_image=models.ImageField(upload_to='brandImage/',verbose_name="صورة البراند", null=True,blank=True)
 
     def __str__(self):
         return self.brand_name 

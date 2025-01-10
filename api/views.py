@@ -22,13 +22,14 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Product.objects.prefetch_related('sub_section', 'brand').all()
     serializer_class = ProductSerializer
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['title', 'price', 'sub_section','brand',"section","is_favoured"]
+    filterset_fields = ['title', 'price', 'sub_section','brand',"is_favoured"]
     search_fields = ['title', 'description','brand']
     ordering_fields = ['price', 'created_at']
 
 class SectionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Section.objects.prefetch_related('sub_sections').all()
     serializer_class = SectionSerializer
+    pagination_class = None
 
 class SubSectionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = SubSection.objects.prefetch_related('section').all()

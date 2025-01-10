@@ -14,8 +14,8 @@ class ProductSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             'id', 'title', 'price', 'quantity', 'description',
-            'discount_type', 'discount_value', 'discounted_price',
-            'images', 'brand','created_at'
+            'discount_type', 'discount_value', 'discounted_price',  
+            'images', 'brand','created_at','is_favoured'
         ]
 
     def get_discounted_price(self, obj):
