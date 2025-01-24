@@ -11,6 +11,7 @@ class Section(models.Model):
     name = models.CharField(max_length=255, verbose_name="اسم القسم")
     description = models.TextField(blank=True, null=True, verbose_name="وصف القسم")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="تاريخ الانشاء")
+    image = models.ImageField(upload_to='section_images/', verbose_name="صورة القسم الفرعي",null= True , blank= True)
 
     def __str__(self):
         return self.name

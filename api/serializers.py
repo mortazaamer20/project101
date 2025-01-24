@@ -52,7 +52,7 @@ class SectionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Section
-        fields = ['id', 'name', 'description', 'created_at']
+        fields = ['id', 'name', 'description', 'created_at','image']
 
     # def get_sub_sections(self, obj):
     #     subsections = obj.sub_sections.all()
