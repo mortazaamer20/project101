@@ -134,16 +134,16 @@ class BannerSerializer(serializers.ModelSerializer):
 class DeviceTokenSerializer(serializers.ModelSerializer):
     class Meta:
         model = DeviceToken
-        fields = ['token', 'platform']
+        fields = '__all__'
 
 class BrandListSerializer(serializers.ModelSerializer):
     class Meta:
         model = brand
-        fields = ['brand_name', 'brand_image']
+        fields = '__all__'
 
 class BrandDetailSerializer(serializers.ModelSerializer):
-    products = ProductSerializer(many=True, read_only=True, source='brand')  # Using related name
+    products = ProductSerializer(many=True, read_only=True, source='brand')  
     
     class Meta:
         model = brand
-        fields = ['brand_name', 'brand_image', 'products']
+        fields = '__all__'
