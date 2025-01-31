@@ -47,23 +47,30 @@ class CartSerializer(serializers.ModelSerializer):
     def get_total(self, obj):
         return obj.calculate_total()
 
-class SectionSerializer(serializers.ModelSerializer):
-    # sub_sections = serializers.SerializerMethodField()
 
+
+class SectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Section
-        fields = ['id', 'name', 'description', 'created_at','image']
-
-    # def get_sub_sections(self, obj):
-    #     subsections = obj.sub_sections.all()
-    #     return SubSectionSerializer(subsections, many=True).data
+        fields = ['id', 'name', 'image', 'created_at']
 
 class SubSectionSerializer(serializers.ModelSerializer):
-    # products = ProductSerializer(many=True, read_only=True)
-
     class Meta:
         model = SubSection
-        fields = '__all__'
+        fields = ['id', 'name', 'image', 'created_at']
+
+class SectionWithSubsectionsSerializer(SectionSerializer):
+    sub_sections = SubSectionSerializer(many=True, read_only=True)
+
+    class Meta(SectionSerializer.Meta):
+        fields = SectionSerializer.Meta.fields + ['sub_sections']
+
+class SubSectionWithProductsSerializer(SubSectionSerializer):
+    products = ProductSerializer(many=True, read_only=True)
+
+    class Meta(SubSectionSerializer.Meta):
+        fields = SubSectionSerializer.Meta.fields + ['products']
+
 
 class CouponSerializer(serializers.ModelSerializer):
     is_valid = serializers.SerializerMethodField()
@@ -102,12 +109,26 @@ class BannerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Banner
         fields = ['id', 'image', 'target_type', 'target_id', 'created_at']
+        read_only_fields = ['created_at']
 
     def get_target_type(self, obj):
-        return 'section' if obj.section else 'subsection'
+        if obj.section:
+            return 'section'
+        return 'subsection'
 
     def get_target_id(self, obj):
         return obj.section.id if obj.section else obj.subsection.id
+
+    def validate(self, data):
+        if data.get('section') and data.get('subsection'):
+            raise serializers.ValidationError(
+                "لا يمكن ربط الشعار إلا بقسم أو قسم فرعي، وليس بكليهما."
+            )
+        if not data.get('section') and not data.get('subsection'):
+            raise serializers.ValidationError(
+                "يجب أن يرتبط الشعار إما بقسم أو قسم فرعي."
+            )
+        return data
     
 
 class DeviceTokenSerializer(serializers.ModelSerializer):
@@ -115,7 +136,14 @@ class DeviceTokenSerializer(serializers.ModelSerializer):
         model = DeviceToken
         fields = ['token', 'platform']
 
-class BrandSerializer(serializers.ModelSerializer):
+class BrandListSerializer(serializers.ModelSerializer):
     class Meta:
         model = brand
-        fields = ['brand_name','brand_image']
+        fields = ['brand_name', 'brand_image']
+
+class BrandDetailSerializer(serializers.ModelSerializer):
+    products = ProductSerializer(many=True, read_only=True, source='brand')  # Using related name
+    
+    class Meta:
+        model = brand
+        fields = ['brand_name', 'brand_image', 'products']

@@ -50,20 +50,32 @@ class OrderItemAdmin(admin.ModelAdmin):
 
 @admin.register(brand)
 class brandAdmin(admin.ModelAdmin):
-    list_display = ['brand_name']
+    list_display = ['brand_name', 'image_preview']
+    def image_preview(self, obj):
+        return format_html(
+            '<img src="{}" style="max-height: 100px;"/>', 
+            obj.brand_image.url
+        ) if obj.brand_image else '-'
+    image_preview.short_description = 'Preview'
 
 @admin.register(CartItem)
 class CartItemAdmin(admin.ModelAdmin):
     list_display = ['cart', 'product', 'quantity']
 
 
-
 @admin.register(Banner)
 class BannerAdmin(admin.ModelAdmin):
-    list_display = ['id', 'image', 'section', 'subsection', 'created_at']
+    list_display = ['id', 'image_preview', 'section', 'subsection', 'created_at']
     list_filter = ['section', 'subsection']
     search_fields = ['section__name', 'subsection__name']
+    readonly_fields = ['created_at', 'image_preview']
 
+    def image_preview(self, obj):
+        return format_html(
+            '<img src="{}" style="max-height: 100px;"/>', 
+            obj.image.url
+        ) if obj.image else '-'
+    image_preview.short_description = 'Preview'
 
 
 

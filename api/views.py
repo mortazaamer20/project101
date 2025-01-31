@@ -4,18 +4,48 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.views import APIView
 from django.db import transaction
-from .models import Section, SubSection, Product, Customer, Order, OrderItem, Coupon, Cart, CartItem,DeviceToken,brand
-from .serializers import SectionSerializer, SubSectionSerializer, ProductSerializer, OrderSerializer, CartSerializer,DeviceTokenSerializer,BrandSerializer
+from .models import (
+    Section, 
+    SubSection, 
+    Product, 
+    Customer, 
+    Order,
+    OrderItem, 
+    Coupon, 
+    Cart, 
+    CartItem, 
+    DeviceToken,
+    brand,
+    Banner
+)
+from .serializers import (
+    SectionSerializer,
+    SubSectionSerializer,
+    ProductSerializer,
+    OrderSerializer, 
+    CartSerializer,
+    DeviceTokenSerializer,
+    BrandDetailSerializer,
+    BrandListSerializer,
+    SectionWithSubsectionsSerializer,
+    SubSectionWithProductsSerializer,
+    BannerSerializer
+)
 from .utility import send_whatsapp_otp
 from django.core.cache import cache
 from .telegram_utility import send_order_to_telegram
 from rest_framework.decorators import api_view
 from .apns import send_ios_push_notification, send_android_push_notification
+from django.db import models
 
 
 class BrandViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = brand.objects.all()
-    serializer_class =BrandSerializer
+    queryset = brand.objects.prefetch_related('brand').all()
+    
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return BrandDetailSerializer
+        return BrandListSerializer
 
 
 class ProductViewSet(viewsets.ReadOnlyModelViewSet):
@@ -25,17 +55,47 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
     filterset_fields = ['title', 'price', 'sub_section','brand',"is_favoured"]
     search_fields = ['title', 'description','brand']
     ordering_fields = ['price', 'created_at']
+    ordering = ['title']
 
 class SectionViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Section.objects.prefetch_related('sub_sections').all()
-    serializer_class = SectionSerializer
-    pagination_class = None
+    queryset = Section.objects.prefetch_related(
+        models.Prefetch(
+            'sub_sections',
+            queryset=SubSection.objects.select_related('section')
+        )
+    ).all()
+
+    pagination_class = None  # Disable pagination for sections
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return SectionWithSubsectionsSerializer
+        return SectionSerializer
 
 class SubSectionViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = SubSection.objects.prefetch_related('section').all()
-    serializer_class = SubSectionSerializer
-    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['name']
+    queryset = SubSection.objects.select_related('section').prefetch_related(
+        models.Prefetch(
+            'products',
+            queryset=Product.objects.select_related('brand')
+                    .prefetch_related('images')
+        )
+    ).all()
+    
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return SubSectionWithProductsSerializer
+        return SubSectionSerializer
+
+    def get_queryset(self):
+        """
+        Optionally filter subsections by section ID from URL parameter
+        """
+        queryset = super().get_queryset()
+        section_id = self.kwargs.get('section_pk')
+        if section_id:
+            return queryset.filter(section_id=section_id)
+        return queryset
+
 
 class AddToCartView(APIView):
     def post(self, request):
@@ -161,6 +221,28 @@ class CheckoutView(APIView):
                 "phone_number": phone_number
             }
         }, status=status.HTTP_200_OK)
+    
+
+class BannerViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = BannerSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['section', 'subsection']
+    ordering_fields = ['created_at', 'name']
+    ordering = ['created_at']
+
+    def get_queryset(self):
+        return Banner.objects.select_related('section', 'subsection').order_by('created_at')
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+            
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
 class VerifyOTPAndPurchaseView(APIView):
     def post(self, request):
@@ -287,3 +369,6 @@ def send_notification(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+

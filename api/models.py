@@ -80,15 +80,21 @@ class Product(models.Model):
     )
 
     class Meta:
-        verbose_name = "المنتجات"
-        verbose_name_plural = "المنتجات"
-        ordering = ['created_at']
-        indexes = [
-            models.Index(fields=['title', 'description']),
-            models.Index(fields=['sub_section']),
-            models.Index(fields=['price']),
+        verbose_name = " المنتجات"
+        verbose_name_plural = "المنتجات "
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(
+                    (models.Q(discount_type='ثابت') & 
+                     models.Q(discount_value__gte=0) &
+                     models.Q(discount_value__lte=models.F('price'))) |
+                    (models.Q(discount_type='نسبة مئوية') & 
+                     models.Q(discount_value__range=(0, 100))) |
+                    models.Q(discount_type__isnull=True)
+                ),
+                name='valid_discount'
+            )
         ]
-
 
     def __str__(self):
         return self.title
