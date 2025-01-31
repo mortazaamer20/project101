@@ -41,7 +41,7 @@ from django.db import models
 
 class BrandViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = brand.objects.prefetch_related('brand').all()
-    
+    search_fields = ['brand_name']
     def get_serializer_class(self):
         if self.action == 'retrieve':
             return BrandDetailSerializer
@@ -66,7 +66,7 @@ class SectionViewSet(viewsets.ReadOnlyModelViewSet):
     ).all()
 
     pagination_class = None  # Disable pagination for sections
-
+    search_fields = ['name']
     def get_serializer_class(self):
         if self.action == 'retrieve':
             return SectionWithSubsectionsSerializer
@@ -80,7 +80,7 @@ class SubSectionViewSet(viewsets.ReadOnlyModelViewSet):
                     .prefetch_related('images')
         )
     ).all()
-    
+    search_fields = ['name']
     def get_serializer_class(self):
         if self.action == 'retrieve':
             return SubSectionWithProductsSerializer
