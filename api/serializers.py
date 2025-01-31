@@ -26,7 +26,7 @@ class CartItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CartItem
-        fields = ['product', 'quantity']
+        fields = ['id','product', 'quantity']
 
     def validate(self, data):
         product = data.get('product')
@@ -42,7 +42,7 @@ class CartSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Cart
-        fields = ['cart_id', 'items', 'total','applied_coupon']
+        fields = ['id','cart_id', 'items', 'total','applied_coupon']
 
     def get_total(self, obj):
         return obj.calculate_total()
@@ -77,7 +77,7 @@ class CouponSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Coupon
-        fields = ['code', 'discount_type', 'discount_value', 'start_date', 'end_date', 'is_active', 'is_valid']
+        fields = ['id','code', 'discount_type', 'discount_value', 'start_date', 'end_date', 'is_active', 'is_valid']
 
     def get_is_valid(self, obj):
         return obj.is_valid()
