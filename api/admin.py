@@ -26,7 +26,7 @@ class ProductAdmin(admin.ModelAdmin):
 
 @admin.register(Coupon)
 class CouponAdmin(admin.ModelAdmin):
-    list_display = ['code', 'discount_type', 'discount_value', 'start_date', 'end_date', 'is_active', 'subsection']
+    list_display = ['code', 'discount_type', 'discount_value', 'start_date', 'end_date', 'is_active']
 
 @admin.register(SubSection)
 class SubSectionAdmin(admin.ModelAdmin):

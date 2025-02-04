@@ -37,6 +37,10 @@ from .telegram_utility import send_order_to_telegram
 from rest_framework.decorators import api_view
 from .apns import send_ios_push_notification, send_android_push_notification
 from django.db import models
+from django.core.exceptions import ValidationError
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+
 
 
 class BrandViewSet(viewsets.ReadOnlyModelViewSet):
@@ -97,96 +101,204 @@ class SubSectionViewSet(viewsets.ReadOnlyModelViewSet):
         return queryset
 
 
+
 class AddToCartView(APIView):
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'cart_id': openapi.Schema(type=openapi.TYPE_STRING, description='Cart ID'),
+                'products': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Items(type=openapi.TYPE_OBJECT),
+                    description='List of products with quantity'
+                )
+            },
+            required=['cart_id', 'products']
+        )
+    )
     def post(self, request):
-        product_id = request.data.get('product_id')
-        quantity = request.data.get('quantity', 1)
-        cart_id = request.data.get('cart_id', None)
+        cart_id = request.data.get('cart_id')  
+        products = request.data.get('products') 
 
-        try:
-            product = Product.objects.get(id=product_id)
-            if product.quantity < quantity:
-                return Response({"خطأ": "الكمية المطلوبة غير متوفرة في المخزون"}, status=status.HTTP_400_BAD_REQUEST)
-        except Product.DoesNotExist:
-            return Response({"خطأ": "المنتج غير موجود"}, status=status.HTTP_404_NOT_FOUND)
+        if not products:
+            return Response({"خطأ": "يرجى إضافة منتجات إلى السلة"}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not product_id:
-            return Response({"خطأ ": "رقم المنتج مطلوب (ID)"}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            product = Product.objects.get(id=product_id)
-        except Product.DoesNotExist:
-            return Response({"خطأ": "المنتج غير موجود"}, status=status.HTTP_404_NOT_FOUND)
-
-        try:
-            quantity = int(quantity)
-            if quantity <= 0:
-                return Response({"خطأ": "الكمية يجب ان تكون رقماً موجباً"}, status=status.HTTP_400_BAD_REQUEST)
-        except ValueError:
-            return Response({"خطأ": "الكمية يجب ان تكون رقماً"}, status=status.HTTP_400_BAD_REQUEST)
-
+        
         if cart_id:
             try:
                 cart = Cart.objects.get(cart_id=cart_id)
             except Cart.DoesNotExist:
-                cart = Cart.objects.create()
+                return Response({"خطأ": "السلة غير موجودة"}, status=status.HTTP_404_NOT_FOUND)
         else:
             cart = Cart.objects.create()
 
-        CartItem.objects.create(cart=cart, product=product, quantity=quantity)
+       
+        for product_data in products:
+            product_id = product_data.get('product_id')
+            quantity = product_data.get('quantity', 1)
 
+            try:
+                product = Product.objects.get(id=product_id)
+            except Product.DoesNotExist:
+                return Response({"خطأ": f"المنتج غير موجود: {product_id}"}, status=status.HTTP_404_NOT_FOUND)
+
+            if product.quantity < quantity:
+                return Response({"خطأ": f"لا توجد كمية كافية من {product.title}"}, status=status.HTTP_400_BAD_REQUEST)
+
+            
+            cart_item, created = CartItem.objects.update_or_create(
+                cart=cart,
+                product=product,
+                defaults={'quantity': quantity}
+            )
+
+        
         serializer = CartSerializer(cart)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response({
+            "cart_id": str(cart.cart_id),
+            "cart": serializer.data
+        }, status=status.HTTP_201_CREATED)
+    
+
 
 class ViewCartView(APIView):
-    def get(self, request):
-        cart_id = request.query_params.get('cart_id')
-        if not cart_id:
-            return Response({"خطأ": "رقم السلة مطلوبة"}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            cart = Cart.objects.get(cart_id=cart_id)
-        except Cart.DoesNotExist:
-            return Response({"خطأ": "السلة فارغة او غير موجودة"}, status=status.HTTP_404_NOT_FOUND)
-        serializer = CartSerializer(cart)
-        return Response(serializer.data)
+        @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter(
+                'cart_id',
+                openapi.IN_QUERY,  # This ensures it appears in Swagger UI
+                description="UUID of the cart",
+                type=openapi.TYPE_STRING,
+                required=True
+            )
+        ]
+    )
+        def get(self, request):
+            cart_id = request.query_params.get('cart_id')
+            if not cart_id:
+                return Response({"خطأ": "رقم السلة مطلوبة"}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                cart = Cart.objects.get(cart_id=cart_id)
+            except Cart.DoesNotExist:
+                return Response({"خطأ": "السلة فارغة او غير موجودة"}, status=status.HTTP_404_NOT_FOUND)
+            serializer = CartSerializer(cart)
+            return Response(serializer.data)
 
 class ApplyCouponView(APIView):
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'cart_id': openapi.Schema(
+                    type=openapi.TYPE_STRING, 
+                    description="The unique identifier of the cart."
+                ),
+                'coupon_code': openapi.Schema(
+                    type=openapi.TYPE_STRING, 
+                    description="The coupon code to apply."
+                ),
+            },
+            required=['cart_id', 'coupon_code']
+        ),
+        responses={
+            200: openapi.Response(
+                description="Coupon successfully applied.",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'cart': openapi.Schema(type=openapi.TYPE_OBJECT, description="Updated cart details."),
+                        'total': openapi.Schema(type=openapi.TYPE_NUMBER, description="Total cart price after discount."),
+                    }
+                )
+            ),
+            400: openapi.Response(description="Invalid input or expired coupon."),
+            404: openapi.Response(description="Cart not found."),
+        }
+    )
     def post(self, request):
         cart_id = request.data.get('cart_id')
-        code = request.data['coupon_code']
+        code = request.data.get('coupon_code')
         
         if not cart_id or not code:
-            return Response({"خطأ": "cart_id و coupon_code مطلوبات"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"خطأ": "cart_id و coupon_code مطلوبات"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         try:
             cart = Cart.objects.get(cart_id=cart_id)
         except Cart.DoesNotExist:
-            return Response({"خطأ": "السلة غير موجودة"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"خطأ": "السلة غير موجودة"},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
         try:
             coupon = Coupon.objects.get(code=code)
         except Coupon.DoesNotExist:
-            return Response({"خطأ": "رمز الكوبون خطأ او غير موجود"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"خطأ": "رمز الكوبون خطأ او غير موجود"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         if not coupon.is_valid():
-            return Response({"خطأ": "انتهت صلاحية الكوبون"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"خطأ": "انتهت صلاحية الكوبون"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        # Apply the coupon to the cart
+        # Apply coupon to the cart globally
         cart.applied_coupon = coupon
         cart.save()
 
-        # Recalculate the total after applying the coupon
-        cart_total = cart.calculate_total()
-
-        # Return updated cart data
         serializer = CartSerializer(cart)
         return Response({
             "cart": serializer.data,
-            "total": cart_total
+            "total": cart.calculate_total()
         })
 
 
+
 class CheckoutView(APIView):
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                "cart_id": openapi.Schema(type=openapi.TYPE_STRING, description="Unique cart identifier."),
+                "username": openapi.Schema(type=openapi.TYPE_STRING, description="Customer's full name."),
+                "government": openapi.Schema(type=openapi.TYPE_STRING, description="Government or region."),
+                "address": openapi.Schema(type=openapi.TYPE_STRING, description="Delivery address."),
+                "phone_number": openapi.Schema(type=openapi.TYPE_STRING, description="Customer's phone number."),
+            },
+            required=["cart_id", "username", "government", "address", "phone_number"]
+        ),
+        responses={
+            200: openapi.Response(
+                description="OTP sent successfully via WhatsApp.",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "message": openapi.Schema(type=openapi.TYPE_STRING, description="Confirmation message."),
+                        "checkout_data": openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            description="Checkout details.",
+                            properties={
+                                "cart_id": openapi.Schema(type=openapi.TYPE_STRING, description="Cart ID."),
+                                "username": openapi.Schema(type=openapi.TYPE_STRING, description="Username."),
+                                "government": openapi.Schema(type=openapi.TYPE_STRING, description="Government."),
+                                "address": openapi.Schema(type=openapi.TYPE_STRING, description="Address."),
+                                "phone_number": openapi.Schema(type=openapi.TYPE_STRING, description="Phone number."),
+                            }
+                        ),
+                    }
+                )
+            ),
+            400: openapi.Response(description="Missing required fields or empty cart."),
+            404: openapi.Response(description="Cart not found."),
+            500: openapi.Response(description="WhatsApp OTP sending failed."),
+        }
+    )
     def post(self, request):
         cart_id = request.data.get("cart_id")
         username = request.data.get("username")
@@ -205,7 +317,7 @@ class CheckoutView(APIView):
         if cart.items.count() == 0:
             return Response({"خطأ": "السلة فارغة"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Send the OTP via WhatsApp template message
+        
         try:
             send_whatsapp_otp(phone_number)
         except Exception as e:
@@ -221,7 +333,6 @@ class CheckoutView(APIView):
                 "phone_number": phone_number
             }
         }, status=status.HTTP_200_OK)
-    
 
 class BannerViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = BannerSerializer
@@ -245,6 +356,27 @@ class BannerViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 class VerifyOTPAndPurchaseView(APIView):
+
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                "cart_id": openapi.Schema(type=openapi.TYPE_STRING, description="Cart ID."),
+                "username": openapi.Schema(type=openapi.TYPE_STRING, description="Customer's name."),
+                "government": openapi.Schema(type=openapi.TYPE_STRING, description="Government/region."),
+                "address": openapi.Schema(type=openapi.TYPE_STRING, description="Delivery address."),
+                "phone_number": openapi.Schema(type=openapi.TYPE_STRING, description="Customer phone."),
+                "code": openapi.Schema(type=openapi.TYPE_STRING, description="OTP code received on WhatsApp."),
+            },
+            required=["cart_id", "username", "government", "address", "phone_number", "code"]
+        ),
+        responses={
+            201: openapi.Response(description="Order successfully created."),
+            400: openapi.Response(description="Bad request (missing fields, invalid OTP, stock issues)."),
+            404: openapi.Response(description="Cart not found."),
+            500: openapi.Response(description="Internal server error."),
+        }
+    )
     def post(self, request):
         cart_id = request.data.get("cart_id")
         username = request.data.get("username")
@@ -253,20 +385,21 @@ class VerifyOTPAndPurchaseView(APIView):
         phone_number = request.data.get("phone_number")
         code = request.data.get("code")
 
+        
         if not all([cart_id, username, government, address, phone_number, code]):
             return Response({"خطأ": "يرجى التأكد من ادخال جميع الحقول"}, status=status.HTTP_400_BAD_REQUEST)
 
+       
         try:
             cart = Cart.objects.get(cart_id=cart_id)
         except Cart.DoesNotExist:
             return Response({"خطأ": "السلة غير موجودة"}, status=status.HTTP_404_NOT_FOUND)
 
-        # Retrieve the stored OTP from cache
+       
         stored_otp = cache.get(f"otp:{phone_number}")
         if not stored_otp:
             return Response({"خطأ": "الرمز غير موجود او منتهي الصلاحية"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Compare user-provided OTP with stored one
         try:
             user_otp = int(code)
         except ValueError:
@@ -275,40 +408,57 @@ class VerifyOTPAndPurchaseView(APIView):
         if user_otp != stored_otp:
             return Response({"خطأ": "الرمز غير صحيح"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # OTP verified - proceed to create order
+        
         with transaction.atomic():
-            customer, _ = Customer.objects.get_or_create(phone_number=phone_number)
-            customer.username = username
-            customer.government = government
-            customer.address = address
-            customer.is_verified = True
-            customer.save()
+            
+            customer, created = Customer.objects.get_or_create(phone_number=phone_number)
+            if created or not customer.username:  # Only update if new or incomplete
+                customer.username = username
+                customer.government = government
+                customer.address = address
+                customer.is_verified = True
+                customer.save()
 
+            
             order = Order.objects.create(customer=customer)
 
-            for item in cart.items.all():
+            
+            order_items = []
+            for item in cart.items.select_related("product"):
                 product = item.product
-                if product.quantity < item.quantity:
-                    return Response({"خطأ": "لا توجد كمية كافية في المخزن"}, status=status.HTTP_400_BAD_REQUEST)
-                product.update_stock(-item.quantity)
-                OrderItem.objects.create(
+                if product.stock < item.quantity:
+                    return Response(
+                        {"خطأ": f"لا توجد كمية كافية من {product.title}."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                product.update_stock(-item.quantity)  # Deduct stock
+                order_items.append(OrderItem(
                     order=order,
                     product=product,
                     quantity=item.quantity,
                     total_price=item.get_total_price()
-                )
+                ))
 
-            # Clear the cart
+        
+            OrderItem.objects.bulk_create(order_items)
+
+            
             cart.items.all().delete()
             cart.delete()
 
-        
+      
         cache.delete(f"otp:{phone_number}")
-        send_order_to_telegram(customer, order)
 
+        
+        try:
+            send_order_to_telegram(customer, order)
+        except Exception as e:
+            print(f"⚠️ Telegram notification failed: {e}")  # Log the error
+
+        
         serializer = OrderSerializer(order)
         return Response({"الرسالة": "تم الطلب بنجاح", "الطلب": serializer.data}, status=status.HTTP_201_CREATED)
-    
 
 
 @api_view(['POST'])

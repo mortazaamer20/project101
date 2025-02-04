@@ -1,52 +1,6 @@
 from rest_framework import serializers
 from .models import Section, SubSection, Product, ProductImage, Coupon, brand, OrderItem, Order, Cart, CartItem,Banner,DeviceToken
 
-class ProductImageSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ProductImage
-        fields = ['id', 'image', 'created_at']
-
-class ProductSerializer(serializers.ModelSerializer):
-    images = ProductImageSerializer(many=True, read_only=True)
-    discounted_price = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Product
-        fields = [
-            'id', 'title', 'price', 'quantity', 'description',
-            'discount_type', 'discount_value', 'discounted_price',  
-            'images', 'brand','created_at','is_favoured'
-        ]
-
-    def get_discounted_price(self, obj):
-        return obj.calculate_discounted_price()
-
-class CartItemSerializer(serializers.ModelSerializer):
-    product = ProductSerializer(read_only=True)
-
-    class Meta:
-        model = CartItem
-        fields = ['id','product', 'quantity']
-
-    def validate(self, data):
-        product = data.get('product')
-        quantity = data.get('quantity')
-
-        if product.quantity < quantity:
-            raise serializers.ValidationError(f"لا توجد كمية كافية من {product.title}. هنالك {product.quantity} فقط متوفرة.")
-        return data
-
-class CartSerializer(serializers.ModelSerializer):
-    items = CartItemSerializer(many=True, read_only=True)
-    total = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Cart
-        fields = ['id','cart_id', 'items', 'total','applied_coupon']
-
-    def get_total(self, obj):
-        return obj.calculate_total()
-
 
 
 class SectionSerializer(serializers.ModelSerializer):
@@ -65,11 +19,89 @@ class SectionWithSubsectionsSerializer(SectionSerializer):
     class Meta(SectionSerializer.Meta):
         fields = SectionSerializer.Meta.fields + ['sub_sections']
 
+
+class BrandListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = brand
+        fields = '__all__'
+
+
+
+
+class ProductImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductImage
+        fields = ['id', 'image', 'created_at']
+
+
+
+        
+class ProductSerializer(serializers.ModelSerializer):
+    images = ProductImageSerializer(many=True, read_only=True)
+    discounted_price = serializers.SerializerMethodField()
+    brand = BrandListSerializer(read_only=True)  
+    sub_section = SubSectionSerializer(read_only=True)  
+
+    class Meta:
+        model = Product
+        fields = [
+            'id', 'title', 'price', 'quantity', 'description',
+            'discount_type', 'discount_value', 'discounted_price',  
+            'images', 'brand', 'sub_section', 'created_at', 'is_favoured'
+        ]
+
+    def get_discounted_price(self, obj):
+        return obj.calculate_discounted_price()
+
+
+
+
 class SubSectionWithProductsSerializer(SubSectionSerializer):
     products = ProductSerializer(many=True, read_only=True)
 
     class Meta(SubSectionSerializer.Meta):
         fields = SubSectionSerializer.Meta.fields + ['products']
+
+
+
+
+class CartItemSerializer(serializers.ModelSerializer):
+    product = ProductSerializer(read_only=True)
+    product_id = serializers.IntegerField(write_only=True)  # Accept product id for creation
+
+    class Meta:
+        model = CartItem
+        fields = ['id', 'product', 'product_id', 'quantity']
+
+    def validate(self, data):
+        product_id = data.get('product_id')
+        quantity = data.get('quantity')
+        try:
+            product = Product.objects.get(id=product_id)
+        except Product.DoesNotExist:
+            raise serializers.ValidationError(f"المنتج غير موجود: {product_id}")
+        if product.quantity < quantity:
+            raise serializers.ValidationError(
+                f"لا توجد كمية كافية من {product.title}. هنالك {product.quantity} فقط متوفرة."
+            )
+        data['product'] = product 
+        return data
+
+
+class CartSerializer(serializers.ModelSerializer):
+    items = CartItemSerializer(many=True, read_only=True)
+    total = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Cart
+        fields = ['id','cart_id', 'items', 'total','applied_coupon']
+
+    def get_total(self, obj):
+        return obj.calculate_total()
+
+
+
+
 
 
 class CouponSerializer(serializers.ModelSerializer):
@@ -136,10 +168,6 @@ class DeviceTokenSerializer(serializers.ModelSerializer):
         model = DeviceToken
         fields = '__all__'
 
-class BrandListSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = brand
-        fields = '__all__'
 
 class BrandDetailSerializer(serializers.ModelSerializer):
     products = ProductSerializer(many=True, read_only=True, source='brand')  

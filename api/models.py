@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db.models import F
@@ -114,10 +114,14 @@ class Product(models.Model):
         return self.price
 
     def update_stock(self, quantity_change):
-        if self.quantity + quantity_change < 0:
-            raise ValidationError("لا يوجد مخزون كاف متاح.")
-        self.quantity = F('quantity') + quantity_change
-        self.save(update_fields=['quantity'])
+        with transaction.atomic():
+            # Lock the row to prevent race conditions
+            product = Product.objects.select_for_update().get(pk=self.pk)
+            new_quantity = product.quantity + quantity_change
+            if new_quantity < 0:
+                raise ValidationError("لا يوجد مخزون كاف متاح.")
+            product.quantity = new_quantity
+            product.save()
 
     def is_low_stock(self, threshold=5):
         return self.quantity <= threshold
@@ -138,45 +142,46 @@ class Coupon(models.Model):
     code = models.CharField(max_length=50, unique=True, verbose_name="رمز الكوبون")
     discount_type = models.CharField(
         max_length=20,
-        choices=Product.DISCOUNT_TYPES,
+        choices=Product.DISCOUNT_TYPES,  # Using your Product discount type choices
         blank=True,
         null=True
     )
-    discount_value = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="قيمة الخصم")
+    discount_value = models.DecimalField(
+        max_digits=10, decimal_places=2, verbose_name="قيمة الخصم"
+    )
     start_date = models.DateTimeField(verbose_name="تاريخ بدأ الخصم")
     end_date = models.DateTimeField(verbose_name="تاريخ انتهاء الخصم")
     is_active = models.BooleanField(default=True, verbose_name="هل تريد تفعيل رمز الخصم؟")
-    subsection = models.ForeignKey(SubSection, related_name='coupons', null=True, blank=True, on_delete=models.CASCADE, verbose_name="اسم القسم الفرعي")
+    # Remove the subsection field or ignore it if not needed
+    # subsection = models.ForeignKey(...)  # Removed for global coupons
 
-    def __str__(self):
-        return self.code
+    def apply_coupon_to_cart(self, cart_total):
+        """
+        Apply the coupon to the overall cart total.
+        """
+        if self.discount_type == Product.FIXED:
+            # Subtract the fixed discount value from the total
+            discounted_total = cart_total - self.discount_value
+        elif self.discount_type == Product.PERCENTAGE:
+            # Calculate discount as a percentage of the total
+            discount = (self.discount_value / 100) * cart_total
+            discounted_total = cart_total - discount
+        else:
+            discounted_total = cart_total
 
-    def apply_coupon(self, product):
-        if not self.is_valid():
-            return 0
-        if self.subsection and product.sub_section != self.subsection:
-            return 0
-        return self.calculate_discount(product.calculate_discounted_price())
-
-    def calculate_discount(self, price):
-        if self.discount_type == Product.PERCENTAGE:
-            return (self.discount_value / 100) * price
-        elif self.discount_type == Product.FIXED:
-            return self.discount_value
-        return 0
+        return max(discounted_total, 0)
 
     def is_valid(self):
         now = timezone.now()
         return self.is_active and self.start_date <= now <= self.end_date
 
     class Meta:
-        verbose_name = "كوبونات الخصم"
+        verbose_name = "كوبون الخصم"
         verbose_name_plural = "كوبونات الخصم"
         indexes = [
-            models.Index(fields=['code']),  # Index on code for fast lookup
-            models.Index(fields=['subsection']),  # Index on foreign key to SubSection
-            models.Index(fields=['start_date']),  # Index for filtering by date
-            models.Index(fields=['end_date']),  # Index for filtering by date
+            models.Index(fields=['code']),
+            models.Index(fields=['start_date']),
+            models.Index(fields=['end_date']),
         ]
 
 class Customer(models.Model):
@@ -216,7 +221,10 @@ class OrderItem(models.Model):
     total_price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="السعر الكلي")
 
     def save(self, *args, **kwargs):
-        self.total_price = self.quantity * self.product.calculate_discounted_price()
+        if not self.pk:  # Only set during creation
+            self.price_at_purchase = self.product.price
+            self.discount_at_purchase = self.product.discount_value
+            self.total_price = self.product.calculate_discounted_price() * self.quantity
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -230,26 +238,29 @@ class OrderItem(models.Model):
         ]
 
 # Cart Models
+
 class Cart(models.Model):
-    cart_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False,verbose_name="الرمز الفريد للسلة")
-    created_at = models.DateTimeField(auto_now_add=True,verbose_name="تاريخ الانشاء")
-    applied_coupon = models.ForeignKey(Coupon, blank=True, null=True, on_delete=models.SET_NULL,verbose_name="الكوبون المطبق اذا كان هنالك")
+    cart_id = models.UUIDField(
+        default=uuid.uuid4, unique=True, editable=False,
+        verbose_name="الرمز الفريد للسلة"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="تاريخ الانشاء")
+    applied_coupon = models.ForeignKey(
+        Coupon, blank=True, null=True, on_delete=models.SET_NULL,
+        verbose_name="الكوبون المطبق اذا كان هنالك"
+    )
 
     def calculate_total(self):
-        items_total = sum(i.get_total_price() for i in self.items.all())  # Sum total price for all items
+        # Sum up each cart item's total price (each should include any product-specific discounts)
+        items_total = sum(item.get_total_price() for item in self.items.all())
+        # If there's a coupon, apply it to the overall total
         if self.applied_coupon:
-            total_discount = 0
-            # Apply the coupon discount to each item in the cart
-            for item in self.items.all():
-                product_discount = self.applied_coupon.apply_coupon(item.product)  # Get discount for the item
-                total_discount += product_discount * item.quantity  # Multiply by quantity to get total discount for the item
-
-            final_total = items_total - total_discount  # Subtract total discount from the items total
-            return max(final_total, 0)  # Ensure the final total is not less than 0
-        return items_total  # Return the items total if no coupon is applied
+            return self.applied_coupon.apply_coupon_to_cart(items_total)
+        return items_total
 
     def __str__(self):
         return f"السلة {self.cart_id}"
+
 
 class CartItem(models.Model):
     cart = models.ForeignKey(Cart, related_name='items', on_delete=models.CASCADE)
