@@ -613,7 +613,7 @@ class VerifyOTPAndPurchaseView(APIView):
             order_items = []
             for item in cart.items.select_related("product"):
                 product = item.product
-                if product.stock < item.quantity:
+                if product.quantity < item.quantity:
                     return Response(
                         {"خطأ": f"لا توجد كمية كافية من {product.title}."},
                         status=status.HTTP_400_BAD_REQUEST
