@@ -202,10 +202,23 @@ class Customer(models.Model):
 
 class Order(models.Model):
     customer = models.ForeignKey(Customer, related_name="orders", on_delete=models.CASCADE,verbose_name="الطلبات")
+    coupon = models.ForeignKey(
+        Coupon, 
+        related_name="orders", 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        verbose_name="الكوبون المستخدم"
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="تاريخ الطلب")
+    total = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="الإجمالي")
 
     def calculate_total_price(self):
-        return sum(item.total_price for item in self.items.all())
+        items_total = sum(item.total_price for item in self.items.all())
+        # Apply coupon discount if available
+        if self.coupon:
+            return self.coupon.apply_coupon_to_cart(items_total)
+        return items_total
 
     def __str__(self):
         return f"طلب بواسطة {self.customer.phone_number}"
@@ -219,7 +232,7 @@ class OrderItem(models.Model):
     product = models.ForeignKey(Product, related_name="order_items", on_delete=models.CASCADE, verbose_name="المنتجات المطلوبة")
     quantity = models.PositiveIntegerField(verbose_name="الكمية االمطلوبة")
     total_price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="السعر الكلي")
-
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="تاريخ الانشاء")
     def save(self, *args, **kwargs):
         if not self.pk:  # Only set during creation
             self.price_at_purchase = self.product.price

@@ -3,6 +3,7 @@ from django.views.decorators.csrf import csrf_exempt
 from rest_framework.response import Response
 from rest_framework import status, viewsets
 from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import status, serializers
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.views import APIView
 from django.db import transaction
@@ -394,137 +395,221 @@ class ApplyCouponView(APIView):
 #             }
 #         }, status=status.HTTP_200_OK)
 
+# class CheckoutView(APIView):
+#     @swagger_auto_schema(
+#         request_body=openapi.Schema(
+#             type=openapi.TYPE_OBJECT,
+#             properties={
+#                 "cart_id": openapi.Schema(type=openapi.TYPE_STRING, description="Unique cart identifier."),
+#                 "username": openapi.Schema(type=openapi.TYPE_STRING, description="Customer's full name."),
+#                 "government": openapi.Schema(type=openapi.TYPE_STRING, description="Government or region."),
+#                 "address": openapi.Schema(type=openapi.TYPE_STRING, description="Delivery address."),
+#                 "phone_number": openapi.Schema(type=openapi.TYPE_STRING, description="Customer's phone number."),
+#                 "coupon_code": openapi.Schema(type=openapi.TYPE_STRING, description="Discount coupon code (optional)."),
+#             },
+#             required=["cart_id", "username", "government", "address", "phone_number"]
+#         ),
+#         responses={
+#             200: openapi.Response(
+#                 description="OTP sent successfully via WhatsApp.",
+#                 schema=openapi.Schema(
+#                     type=openapi.TYPE_OBJECT,
+#                     properties={
+#                         "message": openapi.Schema(type=openapi.TYPE_STRING, description="Confirmation message."),
+#                         "checkout_data": openapi.Schema(
+#                             type=openapi.TYPE_OBJECT,
+#                             description="Checkout details.",
+#                             properties={
+#                                 "cart_id": openapi.Schema(type=openapi.TYPE_STRING, description="Cart ID."),
+#                                 "username": openapi.Schema(type=openapi.TYPE_STRING, description="Username."),
+#                                 "government": openapi.Schema(type=openapi.TYPE_STRING, description="Government."),
+#                                 "address": openapi.Schema(type=openapi.TYPE_STRING, description="Address."),
+#                                 "phone_number": openapi.Schema(type=openapi.TYPE_STRING, description="Phone number."),
+#                                 "total_price": openapi.Schema(type=openapi.TYPE_NUMBER, description="Total price after discount."),
+#                                 "coupon": openapi.Schema(type=openapi.TYPE_OBJECT, description="Applied coupon details."),
+#                             }
+#                         ),
+#                     }
+#                 )
+#             ),
+#             400: openapi.Response(description="Missing required fields or empty cart."),
+#             404: openapi.Response(description="Cart not found."),
+#             500: openapi.Response(description="WhatsApp OTP sending failed."),
+#         }
+#     )
+#     def post(self, request):
+#         # استخراج القيم والتأكد من أنها ليست None
+#         cart_id = request.data.get("cart_id", "").strip()
+#         username = request.data.get("username", "").strip()
+#         government = request.data.get("government", "").strip()
+#         address = request.data.get("address", "").strip()
+#         phone_number = request.data.get("phone_number", "").strip()
+#         coupon_code = request.data.get("coupon_code", "").strip()
+
+#         # التحقق من القيم الفارغة
+#         missing_fields = []
+#         if not cart_id:
+#             missing_fields.append("cart_id")
+#         if not username:
+#             missing_fields.append("username")
+#         if not government:
+#             missing_fields.append("government")
+#         if not address:
+#             missing_fields.append("address")
+#         if not phone_number:
+#             missing_fields.append("phone_number")
+
+#         if missing_fields:
+#             return Response(
+#                 {"خطأ": f"يرجى التأكد من إدخال جميع الحقول المطلوبة: {', '.join(missing_fields)}"},
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+
+#         # البحث عن السلة والتحقق من وجودها
+#         try:
+#             cart = Cart.objects.get(cart_id=cart_id)
+#         except Cart.DoesNotExist:
+#             return Response({"خطأ": "السلة غير موجودة"}, status=status.HTTP_404_NOT_FOUND)
+
+#         if cart.items.count() == 0:
+#             return Response({"خطأ": "السلة فارغة"}, status=status.HTTP_400_BAD_REQUEST)
+
+#         applied_coupon = None
+#         discount_amount = 0
+
+#         # التحقق من الكوبون وتطبيقه
+#         if coupon_code:
+#             try:
+#                 coupon = Coupon.objects.get(code=coupon_code)
+
+#                 # التحقق من صلاحية الكوبون
+#                 if not coupon.is_valid():
+#                     return Response({"خطأ": "انتهت صلاحية الكوبون"}, status=status.HTTP_400_BAD_REQUEST)
+
+#                 # تطبيق الكوبون على السلة
+#                 cart.applied_coupon = coupon
+#                 cart.save()
+
+#                 applied_coupon = {
+#                     "coupon_code": coupon.code,
+#                     "discount_type": coupon.discount_type,
+#                     "discount_value": coupon.discount_value,
+#                 }
+
+#                 # حساب الخصم
+#                 if coupon.discount_type == "percentage":
+#                     discount_amount = (cart.calculate_total() * coupon.discount_value) / 100
+#                 elif coupon.discount_type == "fixed":
+#                     discount_amount = coupon.discount_value
+
+#             except Coupon.DoesNotExist:
+#                 return Response({"خطأ": "رمز الكوبون غير صحيح أو غير موجود"}, status=status.HTTP_400_BAD_REQUEST)
+
+#         # حساب السعر النهائي بعد الخصم، مع التأكد من عدم تجاوز السعر الأصلي
+#         total_price_after_discount = max(0, cart.calculate_total() - discount_amount)
+
+#         # إرسال OTP عبر الواتساب
+#         try:
+#             send_whatsapp_otp(phone_number)
+#         except Exception as e:
+#             return Response({"خطأ": f"فشل في ارسال الرمز : {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+#         return Response({
+#             "message": "تم ارسال الرمز بنجاح، يرجى تفقد الواتساب الخاص بك",
+#             "checkout_data": {
+#                 "cart_id": str(cart_id),
+#                 "username": username,
+#                 "government": government,
+#                 "address": address,
+#                 "phone_number": phone_number,
+#                 "total_price": total_price_after_discount,
+#                 "coupon": applied_coupon,
+#             }
+#         }, status=status.HTTP_200_OK)
+
+
+
+class CheckoutSerializer(serializers.Serializer):
+    cart_id = serializers.CharField()
+    username = serializers.CharField()
+    government = serializers.CharField()
+    address = serializers.CharField()
+    phone_number = serializers.CharField()
+    coupon_code = serializers.CharField()
+
+
 class CheckoutView(APIView):
-    @swagger_auto_schema(
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                "cart_id": openapi.Schema(type=openapi.TYPE_STRING, description="Unique cart identifier."),
-                "username": openapi.Schema(type=openapi.TYPE_STRING, description="Customer's full name."),
-                "government": openapi.Schema(type=openapi.TYPE_STRING, description="Government or region."),
-                "address": openapi.Schema(type=openapi.TYPE_STRING, description="Delivery address."),
-                "phone_number": openapi.Schema(type=openapi.TYPE_STRING, description="Customer's phone number."),
-                "coupon_code": openapi.Schema(type=openapi.TYPE_STRING, description="Discount coupon code (optional)."),
-            },
-            required=["cart_id", "username", "government", "address", "phone_number"]
-        ),
-        responses={
-            200: openapi.Response(
-                description="OTP sent successfully via WhatsApp.",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        "message": openapi.Schema(type=openapi.TYPE_STRING, description="Confirmation message."),
-                        "checkout_data": openapi.Schema(
-                            type=openapi.TYPE_OBJECT,
-                            description="Checkout details.",
-                            properties={
-                                "cart_id": openapi.Schema(type=openapi.TYPE_STRING, description="Cart ID."),
-                                "username": openapi.Schema(type=openapi.TYPE_STRING, description="Username."),
-                                "government": openapi.Schema(type=openapi.TYPE_STRING, description="Government."),
-                                "address": openapi.Schema(type=openapi.TYPE_STRING, description="Address."),
-                                "phone_number": openapi.Schema(type=openapi.TYPE_STRING, description="Phone number."),
-                                "total_price": openapi.Schema(type=openapi.TYPE_NUMBER, description="Total price after discount."),
-                                "coupon": openapi.Schema(type=openapi.TYPE_OBJECT, description="Applied coupon details."),
-                            }
-                        ),
-                    }
-                )
-            ),
-            400: openapi.Response(description="Missing required fields or empty cart."),
-            404: openapi.Response(description="Cart not found."),
-            500: openapi.Response(description="WhatsApp OTP sending failed."),
-        }
-    )
     def post(self, request):
-        # استخراج القيم والتأكد من أنها ليست None
-        cart_id = request.data.get("cart_id", "").strip()
-        username = request.data.get("username", "").strip()
-        government = request.data.get("government", "").strip()
-        address = request.data.get("address", "").strip()
-        phone_number = request.data.get("phone_number", "").strip()
-        coupon_code = request.data.get("coupon_code", "").strip()
+        serializer = CheckoutSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
 
-        # التحقق من القيم الفارغة
-        missing_fields = []
-        if not cart_id:
-            missing_fields.append("cart_id")
-        if not username:
-            missing_fields.append("username")
-        if not government:
-            missing_fields.append("government")
-        if not address:
-            missing_fields.append("address")
-        if not phone_number:
-            missing_fields.append("phone_number")
-
-        if missing_fields:
-            return Response(
-                {"خطأ": f"يرجى التأكد من إدخال جميع الحقول المطلوبة: {', '.join(missing_fields)}"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # البحث عن السلة والتحقق من وجودها
         try:
-            cart = Cart.objects.get(cart_id=cart_id)
-        except Cart.DoesNotExist:
-            return Response({"خطأ": "السلة غير موجودة"}, status=status.HTTP_404_NOT_FOUND)
+            with transaction.atomic():
+                
+                try:
+                    cart = Cart.objects.select_for_update().get(cart_id=data["cart_id"])
+                except Cart.DoesNotExist:
+                    return Response(
+                        {"خطأ": "السلة غير موجودة"},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
 
-        if cart.items.count() == 0:
-            return Response({"خطأ": "السلة فارغة"}, status=status.HTTP_400_BAD_REQUEST)
+               
+                if cart.items.count() == 0:
+                    return Response(
+                        {"خطأ": "السلة فارغة"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
-        applied_coupon = None
-        discount_amount = 0
+                
+                try:
+                    coupon = Coupon.objects.get(code=data["coupon_code"])
+                except Coupon.DoesNotExist:
+                    return Response(
+                        {"خطأ": "رمز الكوبون خطأ او غير موجود"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
-        # التحقق من الكوبون وتطبيقه
-        if coupon_code:
-            try:
-                coupon = Coupon.objects.get(code=coupon_code)
-
-                # التحقق من صلاحية الكوبون
                 if not coupon.is_valid():
-                    return Response({"خطأ": "انتهت صلاحية الكوبون"}, status=status.HTTP_400_BAD_REQUEST)
+                    return Response(
+                        {"خطأ": "انتهت صلاحية الكوبون"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
-                # تطبيق الكوبون على السلة
+                
                 cart.applied_coupon = coupon
                 cart.save()
 
-                applied_coupon = {
-                    "coupon_code": coupon.code,
-                    "discount_type": coupon.discount_type,
-                    "discount_value": coupon.discount_value,
-                }
+                
+                try:
+                    send_whatsapp_otp(data["phone_number"])
+                except Exception as e:
+                    raise Exception("فشل في ارسال الرمز : " + str(e))
 
-                # حساب الخصم
-                if coupon.discount_type == "percentage":
-                    discount_amount = (cart.calculate_total() * coupon.discount_value) / 100
-                elif coupon.discount_type == "fixed":
-                    discount_amount = coupon.discount_value
+                
+                total_after_discount = cart.calculate_total()
 
-            except Coupon.DoesNotExist:
-                return Response({"خطأ": "رمز الكوبون غير صحيح أو غير موجود"}, status=status.HTTP_400_BAD_REQUEST)
-
-        # حساب السعر النهائي بعد الخصم، مع التأكد من عدم تجاوز السعر الأصلي
-        total_price_after_discount = max(0, cart.calculate_total() - discount_amount)
-
-        # إرسال OTP عبر الواتساب
-        try:
-            send_whatsapp_otp(phone_number)
         except Exception as e:
-            return Response({"خطأ": f"فشل في ارسال الرمز : {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            return Response(
+                {"خطأ": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
         return Response({
             "message": "تم ارسال الرمز بنجاح، يرجى تفقد الواتساب الخاص بك",
             "checkout_data": {
-                "cart_id": str(cart_id),
-                "username": username,
-                "government": government,
-                "address": address,
-                "phone_number": phone_number,
-                "total_price": total_price_after_discount,
-                "coupon": applied_coupon,
+                "cart_id": data["cart_id"],
+                "username": data["username"],
+                "government": data["government"],
+                "address": data["address"],
+                "phone_number": data["phone_number"],
+                "coupon_code": data["coupon_code"],
+                "total": total_after_discount,
             }
         }, status=status.HTTP_200_OK)
+
 
 class BannerViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = BannerSerializer
@@ -547,6 +632,14 @@ class BannerViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
+
+class VerifyOTPSerializer(serializers.Serializer):
+    cart_id = serializers.CharField()
+    username = serializers.CharField()
+    government = serializers.CharField()
+    address = serializers.CharField()
+    phone_number = serializers.CharField()
+    code = serializers.CharField()  # OTP code
 
 class VerifyOTPAndPurchaseView(APIView):
 
@@ -571,77 +664,91 @@ class VerifyOTPAndPurchaseView(APIView):
         }
     )
     def post(self, request):
-        cart_id = request.data.get("cart_id")
-        username = request.data.get("username")
-        government = request.data.get("government")
-        address = request.data.get("address")
-        phone_number = request.data.get("phone_number")
-        code = request.data.get("code")
+        serializer = VerifyOTPSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
 
-        if not all([cart_id, username, government, address, phone_number, code]):
-            return Response({"خطأ": "يرجى التأكد من ادخال جميع الحقول"}, status=status.HTTP_400_BAD_REQUEST)
+        phone_number = data["phone_number"]
 
-        try:
-            cart = Cart.objects.get(cart_id=cart_id)
-        except Cart.DoesNotExist:
-            return Response({"خطأ": "السلة غير موجودة"}, status=status.HTTP_404_NOT_FOUND)
-
+        
         stored_otp = cache.get(f"otp:{phone_number}")
         if not stored_otp:
             return Response({"خطأ": "الرمز غير موجود او منتهي الصلاحية"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            user_otp = int(code)
+            user_otp = int(data["code"])
         except ValueError:
             return Response({"خطأ": "يجب ان يكون الرمز رقمأ"}, status=status.HTTP_400_BAD_REQUEST)
 
         if user_otp != stored_otp:
             return Response({"خطأ": "الرمز غير صحيح"}, status=status.HTTP_400_BAD_REQUEST)
 
-        with transaction.atomic():
+        
+        try:
+            with transaction.atomic():
+                
+                try:
+                    cart = Cart.objects.select_for_update().get(cart_id=data["cart_id"])
+                except Cart.DoesNotExist:
+                    return Response({"خطأ": "السلة غير موجودة"}, status=status.HTTP_404_NOT_FOUND)
 
-            customer, created = Customer.objects.get_or_create(phone_number=phone_number)
-            if created or not customer.username:  # Only update if new or incomplete
-                customer.username = username
-                customer.government = government
-                customer.address = address
-                customer.is_verified = True
-                customer.save()
+                
+                if cart.items.count() == 0:
+                    return Response({"خطأ": "السلة فارغة"}, status=status.HTTP_400_BAD_REQUEST)
 
-            order = Order.objects.create(customer=customer)
+               
+                customer, created = Customer.objects.get_or_create(phone_number=phone_number)
+                if created or not customer.username:  
+                    customer.username = data["username"]
+                    customer.government = data["government"]
+                    customer.address = data["address"]
+                    customer.is_verified = True
+                    customer.save()
 
-            order_items = []
-            for item in cart.items.select_related("product"):
-                product = item.product
-                if product.quantity < item.quantity:
-                    return Response(
-                        {"خطأ": f"لا توجد كمية كافية من {product.title}."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
+                
+                order = Order.objects.create(
+                    customer=customer,
+                    coupon=getattr(cart, 'applied_coupon', None)  
+                )
 
-                product.update_stock(-item.quantity)  # Deduct stock
-                order_items.append(OrderItem(
-                    order=order,
-                    product=product,
-                    quantity=item.quantity,
-                    total_price=item.get_total_price()
-                ))
+                order_items = []
+                
+                for item in cart.items.select_related("product"):
+                    product = item.product
+                    if product.quantity < item.quantity:
+                        raise Exception(f"لا توجد كمية كافية من {product.title}.")
+                    
+                    product.update_stock(-item.quantity)
+                    order_items.append(OrderItem(
+                        order=order,
+                        product=product,
+                        quantity=item.quantity,
+                        total_price=item.get_total_price()  
+                    ))
 
-            OrderItem.objects.bulk_create(order_items)
+                OrderItem.objects.bulk_create(order_items)
 
-            cart.items.all().delete()
-            cart.delete()
+                order.total = order.calculate_total_price()
+                order.save()
 
+                
+                cart.items.all().delete()
+                cart.delete()
+        except Exception as e:
+           
+            return Response({"خطأ": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        
         cache.delete(f"otp:{phone_number}")
 
+        
         try:
             send_order_to_telegram(customer, order)
         except Exception as e:
-            print(f"⚠️ Telegram notification failed: {e}")  # Log the error
+            print(f"⚠️ Telegram notification failed: {e}")
 
-        serializer = OrderSerializer(order)
-        return Response({"الرسالة": "تم الطلب بنجاح", "الطلب": serializer.data}, status=status.HTTP_201_CREATED)
-
+        order_data = OrderSerializer(order).data
+        return Response({"الرسالة": "تم الطلب بنجاح", "الطلب": order_data}, status=status.HTTP_201_CREATED)
 
 @api_view(['POST'])
 def save_device_token(request):

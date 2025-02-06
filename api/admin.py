@@ -46,8 +46,24 @@ class CustomerAdmin(admin.ModelAdmin):
 
 @admin.register(OrderItem)
 class OrderItemAdmin(admin.ModelAdmin):
-    list_display = ['order', 'product', 'quantity', 'total_price']
+    list_display = ['order', 'product', 'quantity', 'total_price', 'discounted_price', 'created_at']
 
+    def discounted_price(self, obj):
+        order = obj.order  # Get the related order
+        if order.coupon:  # Check if a coupon is applied
+            discounted_total = order.calculate_total_price()  # Get total after discount
+            order_total_before_discount = sum(item.total_price for item in order.items.all())  # Original total
+            
+            if order_total_before_discount > 0:
+                # Apply proportional discount to this item
+                discount_ratio = discounted_total / order_total_before_discount
+                return round(obj.total_price * discount_ratio, 2)  # Adjust price based on discount ratio
+        return obj.total_price  # If no coupon, return normal price
+
+    discounted_price.short_description = "السعر بعد الخصم"
+
+
+    
 @admin.register(brand)
 class brandAdmin(admin.ModelAdmin):
     list_display = ['brand_name', 'image_preview']
