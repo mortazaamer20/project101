@@ -156,7 +156,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'ar'
 
-TIME_ZONE = 'Asia/baghdad'
+TIME_ZONE = 'Asia/Baghdad'
 
 USE_I18N = True
 

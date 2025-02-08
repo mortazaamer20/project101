@@ -535,7 +535,7 @@ class CheckoutSerializer(serializers.Serializer):
     government = serializers.CharField()
     address = serializers.CharField()
     phone_number = serializers.CharField()
-    coupon_code = serializers.CharField()
+    coupon_code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
 
 class CheckoutView(APIView):
@@ -562,24 +562,25 @@ class CheckoutView(APIView):
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
-                
-                try:
-                    coupon = Coupon.objects.get(code=data["coupon_code"])
-                except Coupon.DoesNotExist:
-                    return Response(
-                        {"خطأ": "رمز الكوبون خطأ او غير موجود"},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-
-                if not coupon.is_valid():
-                    return Response(
-                        {"خطأ": "انتهت صلاحية الكوبون"},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-
-                
-                cart.applied_coupon = coupon
-                cart.save()
+                coupon_code = data.get("coupon_code")
+                if coupon_code: 
+                    try:
+                        coupon = Coupon.objects.get(code=coupon_code)
+                    except Coupon.DoesNotExist:
+                        return Response(
+                            {"خطأ": "رمز الكوبون خطأ او غير موجود"},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    if not coupon.is_valid():
+                        return Response(
+                            {"خطأ": "انتهت صلاحية الكوبون"},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    cart.applied_coupon = coupon
+                    cart.save()
+                else:
+                    cart.applied_coupon = None
+                    cart.save()
 
                 
                 try:
