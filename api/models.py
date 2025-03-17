@@ -100,10 +100,18 @@ class Product(models.Model):
         return self.title
 
     def clean(self):
-        if self.discount_type == self.FIXED and (self.discount_value < 0 or self.discount_value > self.price):
-            raise ValidationError("لا يمكن أن تتجاوز قيمة الخصم سعر المنتج بالنسبة للخصومات الثابتة.")
-        if self.discount_type == self.PERCENTAGE and (self.discount_value < 0 or self.discount_value > 100):
-            raise ValidationError("يجب أن تتراوح قيمة الخصم بين 0 و100 للحصول على نسبة الخصومات.")
+        if self.discount_type == self.FIXED:
+            
+            if self.discount_value is None:
+                raise ValidationError("يرجى ادخال قيمة الخصم للخصومات الثابتة.")
+            if self.discount_value < 0 or self.discount_value > self.price:
+                raise ValidationError("لا يمكن أن تتجاوز قيمة الخصم سعر المنتج بالنسبة للخصومات الثابتة.")
+        
+        if self.discount_type == self.PERCENTAGE:
+            if self.discount_value is None:
+                raise ValidationError("يرجى ادخال قيمة الخصم للخصومات النسبية.")
+            if self.discount_value < 0 or self.discount_value > 100:
+                raise ValidationError("يجب أن تتراوح قيمة الخصم بين 0 و100 للحصول على نسبة الخصومات.")
 
     def calculate_discounted_price(self):
         if self.discount_type == self.FIXED and self.discount_value:
