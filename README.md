@@ -211,6 +211,6 @@ This project is licensed under the MIT License.
 For questions, open an issue or contact the maintainer directly:
 
 - GitHub: [mortazaamer20](https://github.com/mortazaamer20)
-- Email: youremail@example.com
+
 
 ---
